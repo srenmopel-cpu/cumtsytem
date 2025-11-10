@@ -32,6 +32,12 @@ class StudentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Academic year must be between 2000 and 2100.")
         return value
 
+    def validate_class_enrolled(self, value):
+        # Ensure class_enrolled is provided and valid
+        if not value:
+            raise serializers.ValidationError("Class enrollment is required.")
+        return value
+
 class TeacherSerializer(serializers.ModelSerializer):
     subjects = serializers.SerializerMethodField()
     subject_names = serializers.SerializerMethodField()
@@ -68,6 +74,19 @@ class SubjectSerializer(serializers.ModelSerializer):
     def get_assigned_classes(self, obj):
         return [cls.class_id for cls in obj.assigned_classes.all()]
 
+    def validate_subject_id(self, value):
+        if self.instance and self.instance.subject_id != value:
+            if Subject.objects.filter(subject_id=value).exists():
+                raise serializers.ValidationError("Subject ID must be unique.")
+        elif not self.instance and Subject.objects.filter(subject_id=value).exists():
+            raise serializers.ValidationError("Subject ID must be unique.")
+        return value
+
+    def validate_credit(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Credit must be greater than 0.")
+        return value
+
 class ClassSerializer(serializers.ModelSerializer):
     subjects = serializers.SerializerMethodField()
     subject_names = serializers.SerializerMethodField()
@@ -81,6 +100,24 @@ class ClassSerializer(serializers.ModelSerializer):
 
     def get_subject_names(self, obj):
         return [subject.subject_name for subject in obj.subjects.all()]
+
+    def validate_class_id(self, value):
+        if self.instance and self.instance.class_id != value:
+            if Class.objects.filter(class_id=value).exists():
+                raise serializers.ValidationError("Class ID must be unique.")
+        elif not self.instance and Class.objects.filter(class_id=value).exists():
+            raise serializers.ValidationError("Class ID must be unique.")
+        return value
+
+    def validate_capacity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Capacity must be greater than 0.")
+        return value
+
+    def validate_year(self, value):
+        if value < 2000 or value > 2100:
+            raise serializers.ValidationError("Year must be between 2000 and 2100.")
+        return value
 
 class EnrollmentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -107,12 +144,15 @@ class AssessmentSerializer(serializers.ModelSerializer):
 
 class GradeSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.full_name', read_only=True)
-    assessment_name = serializers.CharField(source='assessment.name', read_only=True)
-    subject_name = serializers.CharField(source='assessment.subject.subject_name', read_only=True)
+    assessment_name = serializers.SerializerMethodField()
+    subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
 
     class Meta:
         model = Grade
         fields = '__all__'
+
+    def get_assessment_name(self, obj):
+        return obj.assessment.name if obj.assessment else None
 
     def validate_score(self, value):
         if value < 0 or value > 100:

@@ -254,7 +254,7 @@ class Grade(models.Model):
     score = models.FloatField()
     grade = models.CharField(max_length=2)
     remark = models.TextField(blank=True, null=True)
-    assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='grades', null=True, blank=True)
+    assessment = models.ForeignKey(Assessment, on_delete=models.SET_NULL, related_name='grades', null=True, blank=True)
 
     def __str__(self):
         return f"{self.grade_id} - {self.grade}"

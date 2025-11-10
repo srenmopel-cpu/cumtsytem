@@ -43,6 +43,7 @@ AUTH_USER_MODEL = 'university.User'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "http://192.168.73.1:8080",
 ]
 
 
