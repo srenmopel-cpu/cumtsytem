@@ -591,7 +591,13 @@ class FinalGradeViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(year=year)
 
         if not queryset.exists():
-            return Response({'error': 'No data found for the specified filters'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'average_score': None,
+                'highest_score': None,
+                'lowest_score': None,
+                'total_students': 0,
+                'pass_rate': 0
+            })
 
         stats = queryset.aggregate(
             average_score=Avg('final_score'),
