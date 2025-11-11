@@ -245,10 +245,11 @@ class StudentViewSet(viewsets.ModelViewSet):
         doc.build(elements)
         return response
 
+@method_decorator(csrf_exempt, name='dispatch')
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = Teacher.objects.all()
     serializer_class = TeacherSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()

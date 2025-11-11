@@ -40,7 +40,20 @@ SECURE_HSTS_PRELOAD = True
 AUTH_USER_MODEL = 'university.User'
 
 # CORS settings
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://192.168.73.1:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://192.168.118.1:8081",
+    "http://192.168.73.1:8081",
+    "http://10.50.10.237:8081",
+]
+
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
     "http://192.168.73.1:8080",
@@ -75,7 +88,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Disabled for API development
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

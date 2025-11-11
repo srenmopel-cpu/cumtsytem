@@ -39,7 +39,7 @@ class StudentSerializer(serializers.ModelSerializer):
         return value
 
 class TeacherSerializer(serializers.ModelSerializer):
-    subjects = serializers.SerializerMethodField()
+    subjects = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
     subject_names = serializers.SerializerMethodField()
     classes = serializers.SerializerMethodField()
     class_names = serializers.SerializerMethodField()
@@ -59,6 +59,34 @@ class TeacherSerializer(serializers.ModelSerializer):
 
     def get_class_names(self, obj):
         return [cls.class_name for cls in obj.classes.all()]
+
+    def create(self, validated_data):
+        subjects_data = validated_data.pop('subjects', [])
+        teacher = super().create(validated_data)
+        if subjects_data:
+            subjects = []
+            for subject_name in subjects_data:
+                subject, created = Subject.objects.get_or_create(
+                    subject_name=subject_name,
+                    defaults={'subject_id': subject_name[:10], 'credit': 3}  # Default values
+                )
+                subjects.append(subject)
+            teacher.subjects.set(subjects)
+        return teacher
+
+    def update(self, instance, validated_data):
+        subjects_data = validated_data.pop('subjects', [])
+        teacher = super().update(instance, validated_data)
+        if subjects_data is not None:
+            subjects = []
+            for subject_name in subjects_data:
+                subject, created = Subject.objects.get_or_create(
+                    subject_name=subject_name,
+                    defaults={'subject_id': subject_name[:10], 'credit': 3}
+                )
+                subjects.append(subject)
+            teacher.subjects.set(subjects)
+        return teacher
 
 class SubjectSerializer(serializers.ModelSerializer):
     assigned_teachers = serializers.SerializerMethodField()
