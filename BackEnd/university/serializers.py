@@ -1,17 +1,20 @@
 from rest_framework import serializers
-from .models import Student, Teacher, Subject, Class, Enrollment, Grade, Payment, Schedule, Invoice, Assessment, FinalGrade
+from .models import Student, Teacher, Subject, Class, Enrollment, Grade, Payment, Schedule, Invoice, Assessment, FinalGrade, User, Role, Permission
 
 class StudentSerializer(serializers.ModelSerializer):
-    class_enrolled_name = serializers.CharField(source='class_enrolled.class_name', read_only=True)
+    class_enrolled_name = serializers.SerializerMethodField()
     subjects = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
         fields = '__all__'
 
+    def get_class_enrolled_name(self, obj):
+        return obj.class_enrolled.class_name if obj.class_enrolled else ''
+
     def get_subjects(self, obj):
         enrollments = obj.enrollments.all()
-        return [enrollment.subject.subject_name for enrollment in enrollments]
+        return [enrollment.subject.subject_name for enrollment in enrollments if enrollment.subject]
 
     def validate_student_id(self, value):
         if self.instance and self.instance.student_id != value:
@@ -21,16 +24,7 @@ class StudentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Student ID must be unique.")
         return value
 
-    def validate_date_of_birth(self, value):
-        from datetime import date
-        if value > date.today():
-            raise serializers.ValidationError("Date of birth cannot be in the future.")
-        return value
 
-    def validate_academic_year(self, value):
-        if value < 2000 or value > 2100:
-            raise serializers.ValidationError("Academic year must be between 2000 and 2100.")
-        return value
 
     def validate_class_enrolled(self, value):
         # Ensure class_enrolled is provided and valid
@@ -43,10 +37,19 @@ class TeacherSerializer(serializers.ModelSerializer):
     subject_names = serializers.SerializerMethodField()
     classes = serializers.SerializerMethodField()
     class_names = serializers.SerializerMethodField()
+    profile_picture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Teacher
         fields = '__all__'
+
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
 
     def get_subjects(self, obj):
         return [subject.subject_id for subject in obj.subjects.all()]
@@ -197,15 +200,33 @@ class FinalGradeSerializer(serializers.ModelSerializer):
 
 class PaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.full_name', read_only=True)
+    student_id = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = Payment
         fields = '__all__'
+        read_only_fields = ['payment_id']
 
     def validate_amount(self, value):
         if value <= 0:
             raise serializers.ValidationError("Amount must be greater than 0.")
         return value
+
+    def create(self, validated_data):
+        student_id = validated_data.pop('student_id')
+        student = Student.objects.get(student_id=student_id)
+        validated_data['student'] = student
+
+        # Auto-generate payment_id
+        last_payment = Payment.objects.order_by('-id').first()
+        if last_payment:
+            last_id = int(last_payment.payment_id[1:])  # Assuming format P000001
+            new_id = f"P{last_id + 1:06d}"
+        else:
+            new_id = "P000001"
+        validated_data['payment_id'] = new_id
+
+        return super().create(validated_data)
 
 class InvoiceSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.full_name', read_only=True)
@@ -260,3 +281,121 @@ class ScheduleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Room {room} is already booked.")
 
         return data
+
+class UserSerializer(serializers.ModelSerializer):
+    roles = serializers.SlugRelatedField(
+        many=True,
+        slug_field='name',
+        queryset=Role.objects.all(),
+        required=False
+    )
+    custom_permissions = serializers.SlugRelatedField(
+        many=True,
+        slug_field='name',
+        queryset=Permission.objects.all(),
+        required=False
+    )
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    all_permissions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'role',
+            'phone', 'address', 'date_of_birth', 'profile_picture',
+            'is_active', 'is_staff', 'is_superuser', 'date_joined',
+            'last_login', 'roles', 'custom_permissions', 'role_display',
+            'all_permissions', 'is_2fa_enabled', 'last_login_ip'
+        ]
+        read_only_fields = ['id', 'date_joined', 'last_login', 'last_login_ip']
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def get_all_permissions(self, obj):
+        return list(obj.get_all_permissions())
+
+    def create(self, validated_data):
+        roles_data = validated_data.pop('roles', [])
+        custom_permissions_data = validated_data.pop('custom_permissions', [])
+        password = validated_data.pop('password', None)
+        role = validated_data.get('role')
+
+        user = User(**validated_data)
+        if password:
+            user.set_password(password)
+        user.save()
+
+        # Assign default role based on the role field
+        if role and not roles_data:
+            try:
+                if role == 'Admin':
+                    admin_role = Role.objects.get(name='Administrator')
+                    user.roles.add(admin_role)
+                elif role == 'Teacher':
+                    teacher_role = Role.objects.get(name='Teacher')
+                    user.roles.add(teacher_role)
+                elif role == 'Student':
+                    student_role = Role.objects.get(name='Student')
+                    user.roles.add(student_role)
+            except Role.DoesNotExist:
+                pass  # Roles might not exist yet
+
+        if roles_data:
+            user.roles.set(roles_data)
+        if custom_permissions_data:
+            user.custom_permissions.set(custom_permissions_data)
+
+        return user
+
+    def update(self, instance, validated_data):
+        roles_data = validated_data.pop('roles', [])
+        custom_permissions_data = validated_data.pop('custom_permissions', [])
+        role = validated_data.get('role')
+
+        for attr, value in validated_data.items():
+            if attr == 'password':
+                instance.set_password(value)
+            else:
+                setattr(instance, attr, value)
+
+        instance.save()
+
+        # Update roles based on role field change
+        if role is not None:
+            instance.roles.clear()  # Clear existing roles
+            try:
+                if role == 'Admin':
+                    admin_role = Role.objects.get(name='Administrator')
+                    instance.roles.add(admin_role)
+                elif role == 'Teacher':
+                    teacher_role = Role.objects.get(name='Teacher')
+                    instance.roles.add(teacher_role)
+                elif role == 'Student':
+                    student_role = Role.objects.get(name='Student')
+                    instance.roles.add(student_role)
+            except Role.DoesNotExist:
+                pass
+
+        if roles_data is not None:
+            instance.roles.set(roles_data)
+        if custom_permissions_data is not None:
+            instance.custom_permissions.set(custom_permissions_data)
+
+        return instance
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = serializers.SlugRelatedField(
+        many=True,
+        slug_field='name',
+        queryset=Permission.objects.all()
+    )
+
+    class Meta:
+        model = Role
+        fields = ['id', 'name', 'description', 'permissions', 'is_default']
+
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permission
+        fields = ['id', 'name', 'description']

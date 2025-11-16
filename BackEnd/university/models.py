@@ -161,6 +161,7 @@ class Teacher(models.Model):
     classes = models.ManyToManyField('Class', related_name='assigned_teachers', blank=True)
     classes_in_charge = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
+    profile_picture = models.ImageField(upload_to='teacher_pictures/', blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(blank=True, null=True)
@@ -227,6 +228,8 @@ class Student(models.Model):
     academic_year = models.IntegerField()
     address = models.TextField()
     study_status = models.CharField(max_length=10, choices=STUDY_STATUS_CHOICES, default='Active')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.student_id} - {self.full_name}"
